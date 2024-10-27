@@ -78,7 +78,7 @@ def save_result_to_db(server_name, result):
     cursor = conn.cursor()
 
     # Assuming the result format is:
-    # inbound_calls:60
+    # inbound_calls:90
     # outbound_calls:0
     # pri_lines:3
     lines = result.splitlines()
@@ -237,85 +237,70 @@ def show_report_window():
     report_button = tk.Button(report_window, text="Generate Report", command=generate_report)
     report_button.pack(pady=10)
 
-    report_output = tk.Text(report_window, height=15, width=50)
+    report_output = tk.Text(report_window, height=10, width=50)
     report_output.pack(padx=10, pady=10)
 
-# Function to show the dashboard
-def show_dashboard():
-    dashboard_window = tk.Toplevel(root)
-    dashboard_window.title("Dashboard")
-
-    # Create a sample plot
-    fig, ax = plt.subplots(figsize=(5, 3))
-    ax.plot([1, 2, 3], [1, 4, 9], label='Sample Data')
-    ax.set_title("Sample Plot")
-    ax.set_xlabel("X-axis")
-    ax.set_ylabel("Y-axis")
-    ax.legend()
-
-    canvas = FigureCanvasTkAgg(fig, master=dashboard_window)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
-
-# Main Tkinter window
+# Initialize the main window
 root = tk.Tk()
-root.title("Server Monitoring Tool")
+root.title("Call Monitoring Application")
 
-# Frame for server controls
+# Create a frame for server management
 server_frame = tk.Frame(root)
 server_frame.pack(pady=10)
 
-server_vars = []
-
-# Input fields for adding a server
-tk.Label(root, text="Server Name").pack(pady=5)
+# Entry fields for server credentials
+tk.Label(root, text="Server Name").pack()
 server_name_entry = tk.Entry(root)
 server_name_entry.pack(pady=5)
 
-tk.Label(root, text="Server IP").pack(pady=5)
+tk.Label(root, text="Server IP").pack()
 server_ip_entry = tk.Entry(root)
 server_ip_entry.pack(pady=5)
 
-tk.Label(root, text="Port").pack(pady=5)
+tk.Label(root, text="Port").pack()
 port_entry = tk.Entry(root)
 port_entry.pack(pady=5)
 
-tk.Label(root, text="Username").pack(pady=5)
+tk.Label(root, text="Username").pack()
 username_entry = tk.Entry(root)
 username_entry.pack(pady=5)
 
-tk.Label(root, text="Password").pack(pady=5)
+tk.Label(root, text="Password").pack()
 password_entry = tk.Entry(root, show='*')
 password_entry.pack(pady=5)
 
-# Buttons for actions
+# Button frame for adding and clearing servers
 button_frame = tk.Frame(root)
 button_frame.pack(pady=10)
 
 add_button = tk.Button(button_frame, text="Add Server", command=add_server)
 add_button.pack(side=tk.LEFT, padx=5)
 
-fetch_button = tk.Button(button_frame, text="Fetch Servers", command=fetch_servers)
-fetch_button.pack(side=tk.LEFT, padx=5)
-
-monitor_button = tk.Button(button_frame, text="Monitor Servers", command=lambda: monitor_servers(False))
-monitor_button.pack(side=tk.LEFT, padx=5)
-
-live_monitor_button = tk.Button(button_frame, text="Start Live Monitoring", command=lambda: monitor_servers(True))
-live_monitor_button.pack(side=tk.LEFT, padx=5)
-
 clear_button = tk.Button(button_frame, text="Clear Data", command=clear_data)
 clear_button.pack(side=tk.LEFT, padx=5)
 
-report_button = tk.Button(button_frame, text="Show Report", command=show_report_window)
+fetch_servers_button = tk.Button(button_frame, text="Fetch Servers", command=fetch_servers)
+fetch_servers_button.pack(side=tk.LEFT, padx=5)
+
+# Dashboard buttons frame
+dashboard_frame = tk.Frame(root)
+dashboard_frame.pack(pady=10)
+
+monitor_button = tk.Button(dashboard_frame, text="Monitor", command=lambda: monitor_servers(live=False))
+monitor_button.pack(side=tk.LEFT, padx=5)
+
+live_monitor_button = tk.Button(dashboard_frame, text="Live Monitor", command=lambda: monitor_servers(live=True))
+live_monitor_button.pack(side=tk.LEFT, padx=5)
+
+report_button = tk.Button(dashboard_frame, text="Show Report", command=show_report_window)
 report_button.pack(side=tk.LEFT, padx=5)
 
-dashboard_button = tk.Button(button_frame, text="Show Dashboard", command=show_dashboard)
-dashboard_button.pack(side=tk.LEFT, padx=5)
+# Text widget to display monitoring results
+result_text = tk.Text(root, height=20, width=70)
+result_text.pack(pady=10)
 
-# Result text area for monitoring output
-result_text = tk.Text(root, height=15, width=70)
-result_text.pack(padx=10, pady=10)
+# List to keep track of server variables
+server_vars = []
 
-# Start the main loop
+# Run the main application loop
 root.mainloop()
