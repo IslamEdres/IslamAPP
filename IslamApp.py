@@ -22,7 +22,7 @@ def execute_remote_script(server_ip, port, username, password, script_path):
         error = stderr.read().decode()
 
         ssh.close()
-        return error if error else output
+        return error or output
 
     except Exception as e:
         return f"Failed to connect to {server_ip}: {str(e)}"
@@ -95,7 +95,7 @@ def save_result_to_db(server_name, result):
     # Insert data into the report table
     try:
         cursor.execute('''INSERT INTO your_report_table (server_name, inbound_calls, outbound_calls, pri_lines, date_column)
-                          VALUES (?, ?, ?, ?, DATE('now'))''', (server_name, inbound_calls, outbound_calls, pri_lines))
+                            VALUES (?, ?, ?, ?, DATE('now'))''', (server_name, inbound_calls, outbound_calls, pri_lines))
         conn.commit()
     except sqlite3.Error as e:
         print(f"An error occurred while saving data to the database: {e}")  # Log the error
@@ -158,7 +158,7 @@ def add_server():
         conn = sqlite3.connect('calls_data.db')
         cursor = conn.cursor()
         cursor.execute('INSERT INTO servers (server_name, server_ip, port, username, password) VALUES (?, ?, ?, ?, ?)',
-                       (server_name, server_ip, port, username, password))
+                    (server_name, server_ip, port, username, password))
         conn.commit()
         conn.close()
 
