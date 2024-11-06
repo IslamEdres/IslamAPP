@@ -1,3 +1,4 @@
+# 1- Imports
 import sqlite3
 import threading
 import paramiko
@@ -10,7 +11,94 @@ import socket
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-# Function to execute the remote script on the server using SSH
+# ---------------_____----------------------------------------------
+# 2- دالة للتحقق من قاعدة البيانات والجداول وإنشائها إذا لزم الأمر
+
+
+def initialize_database():
+    conn = sqlite3.connect('calls_data.db')
+    cursor = conn.cursor()
+
+    # تحقق من وجود جدول 'servers' وإذا لم يكن موجودًا، أنشئه
+    cursor.execute('''CREATE TABLE IF NOT EXISTS servers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_name TEXT,
+                        server_ip TEXT,
+                        port INTEGER,
+                        username TEXT,
+                        password TEXT)''')
+
+    # تحقق من وجود جدول 'your_report_table' وإذا لم يكن موجودًا، أنشئه
+    cursor.execute('''CREATE TABLE IF NOT EXISTS your_report_table (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_name TEXT,
+                        inbound_calls INTEGER,
+                        outbound_calls INTEGER,
+                        pri_lines INTEGER,
+                        date_column DATE,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+    conn.commit()
+    conn.close()
+
+
+# استدعاء دالة `initialize_database` عند بدء التشغيل
+initialize_database()
+
+# 3- Function to monitor the selected servers
+
+
+def monitor_servers(live=False):
+    selected_servers = [server_id for server_id,
+                        var in server_vars if var.get()]
+
+    if not selected_servers:
+        messagebox.showerror(
+            "Error", "No servers selected. Please select servers first.")
+        return
+
+    if not live:
+        result_text.delete(1.0, tk.END)
+
+    def monitor_loop():
+        threads = []
+
+        for server_id in selected_servers:
+            conn = sqlite3.connect('calls_data.db')
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT server_name, server_ip, port, username, password FROM servers WHERE id = ?', (server_id,))
+            server = cursor.fetchone()
+            conn.close()
+
+            if server is None:
+                continue
+
+            server_name, server_ip, port, username, password = server
+
+            def run_on_server(server_name, server_ip):
+                result = execute_remote_script(
+                    server_ip, port, username, password, '/home/islam/PRI-TIME/bash-dahdicalls.sh')
+                result_text.insert(tk.END, f"Data for {
+                                   server_name} ({server_ip}):\n{result}\n\n")
+
+                # Save result to the database
+                save_result_to_db(server_name, result)
+
+            thread = threading.Thread(
+                target=run_on_server, args=(server_name, server_ip))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        if live:
+            root.after(1, lambda: monitor_servers(live=True))
+
+    threading.Thread(target=monitor_loop, daemon=True).start()
+
+
 def execute_remote_script(server_ip, port, username, password, script_path):
     try:
         ssh = paramiko.SSHClient()
@@ -26,53 +114,11 @@ def execute_remote_script(server_ip, port, username, password, script_path):
 
     except Exception as e:
         return f"Failed to connect to {server_ip}: {str(e)}"
+# ----------------------------------------------------------------
 
-# Function to monitor the selected servers
-def monitor_servers(live=False):
-    selected_servers = [server_id for server_id, var in server_vars if var.get()]
+# 4-  Function to save the result data to the database
 
-    if not selected_servers:
-        messagebox.showerror("Error", "No servers selected. Please select servers first.")
-        return
 
-    if not live:
-        result_text.delete(1.0, tk.END)
-
-    def monitor_loop():
-        threads = []
-
-        for server_id in selected_servers:
-            conn = sqlite3.connect('calls_data.db')
-            cursor = conn.cursor()
-            cursor.execute('SELECT server_name, server_ip, port, username, password FROM servers WHERE id = ?', (server_id,))
-            server = cursor.fetchone()
-            conn.close()
-
-            if server is None:
-                continue
-
-            server_name, server_ip, port, username, password = server
-
-            def run_on_server(server_name, server_ip):
-                result = execute_remote_script(server_ip, port, username, password, '/home/islam/PRI-TIME/bash-dahdicalls.sh')
-                result_text.insert(tk.END, f"Data for {server_name} ({server_ip}):\n{result}\n\n")
-                
-                # Save result to the database
-                save_result_to_db(server_name, result)
-
-            thread = threading.Thread(target=run_on_server, args=(server_name, server_ip))
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        if live:
-            root.after(1, lambda: monitor_servers(live=True))
-
-    threading.Thread(target=monitor_loop, daemon=True).start()
-
-# Function to save the result data to the database
 def save_result_to_db(server_name, result):
     conn = sqlite3.connect('calls_data.db')
     cursor = conn.cursor()
@@ -83,7 +129,7 @@ def save_result_to_db(server_name, result):
     # pri_lines:3
     lines = result.splitlines()
     inbound_calls = outbound_calls = pri_lines = None
-    
+
     for line in lines:
         if "inbound_calls" in line:
             inbound_calls = int(line.split(':')[1].strip())
@@ -98,11 +144,15 @@ def save_result_to_db(server_name, result):
                             VALUES (?, ?, ?, ?, DATE('now'))''', (server_name, inbound_calls, outbound_calls, pri_lines))
         conn.commit()
     except sqlite3.Error as e:
-        print(f"An error occurred while saving data to the database: {e}")  # Log the error
+        # Log the error
+        print(f"An error occurred while saving data to the database: {e}")
 
     conn.close()
+# -----------------------------------------------------------------------------
 
-# Function to fetch servers from the database and populate the server list
+# 5-  Function to fetch servers from the database and populate the server list
+
+
 def fetch_servers():
     conn = sqlite3.connect('calls_data.db')
     cursor = conn.cursor()
@@ -119,23 +169,29 @@ def fetch_servers():
         server_vars.append((server_id, var))
         cb = tk.Checkbutton(server_frame, text=server_name, variable=var)
         cb.pack(anchor=tk.W)
+# --------------------------------------------------------------------------
+# 6- Function to clear all data from the database
 
-# Function to clear all data from the database
+
 def clear_data():
     conn = sqlite3.connect('calls_data.db')
     cursor = conn.cursor()
     cursor.execute('DELETE FROM servers')
-    cursor.execute('DELETE FROM your_report_table')  # Clear report data as well
+    # Clear report data as well
+    cursor.execute('DELETE FROM your_report_table')
     conn.commit()
     conn.close()
 
     # Clear checkbuttons
     for widget in server_frame.winfo_children():
         widget.destroy()
-    
-    messagebox.showinfo("Info", "All servers and report data have been deleted.")
 
-# Function to add a new server to the database after validating credentials
+    messagebox.showinfo(
+        "Info", "All servers and report data have been deleted.")
+# ----------------------------------------------------------------------------------------
+# 7- Function to add a new server to the database after validating credentials
+
+
 def add_server():
     server_name = server_name_entry.get()
     server_ip = server_ip_entry.get()
@@ -158,7 +214,7 @@ def add_server():
         conn = sqlite3.connect('calls_data.db')
         cursor = conn.cursor()
         cursor.execute('INSERT INTO servers (server_name, server_ip, port, username, password) VALUES (?, ?, ?, ?, ?)',
-                    (server_name, server_ip, port, username, password))
+                       (server_name, server_ip, port, username, password))
         conn.commit()
         conn.close()
 
@@ -169,22 +225,28 @@ def add_server():
         username_entry.delete(0, tk.END)
         password_entry.delete(0, tk.END)
 
-        messagebox.showinfo("Success", f"Server {server_name} added successfully!")
+        messagebox.showinfo("Success", f"Server {
+                            server_name} added successfully!")
 
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to connect to {server_ip}: {str(e)}")
+        messagebox.showerror("Error", f"Failed to connect to {
+                             server_ip}: {str(e)}")
+# ----------------------------------------------------------------------------------------------------
+# 8-  Function to show the report window
 
-# Function to show the report window
+
 def show_report_window():
     report_window = tk.Toplevel(root)
     report_window.title("Report")
 
     tk.Label(report_window, text="From Date").pack()
-    from_date = DateEntry(report_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+    from_date = DateEntry(report_window, width=12,
+                          background='darkblue', foreground='white', borderwidth=2)
     from_date.pack(padx=10, pady=10)
 
     tk.Label(report_window, text="To Date").pack()
-    to_date = DateEntry(report_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+    to_date = DateEntry(report_window, width=12,
+                        background='darkblue', foreground='white', borderwidth=2)
     to_date.pack(padx=10, pady=10)
 
     tk.Label(report_window, text="Select Server").pack()
@@ -196,7 +258,8 @@ def show_report_window():
     server_names = cursor.fetchall()
     conn.close()
 
-    server_combobox['values'] = ["All Servers"] + [name[0] for name in server_names]
+    server_combobox['values'] = ["All Servers"] + [name[0]
+                                                   for name in server_names]
     server_combobox.pack(pady=10)
 
     def generate_report():
@@ -205,26 +268,32 @@ def show_report_window():
         selected_server = server_combobox.get()
 
         if start_date > end_date:
-            messagebox.showerror("Error", "The start date must be earlier than the end date.")
+            messagebox.showerror(
+                "Error", "The start date must be earlier than the end date.")
             return
 
         conn = sqlite3.connect('calls_data.db')
         cursor = conn.cursor()
 
         if selected_server == "All Servers":
-            cursor.execute('SELECT * FROM your_report_table WHERE date_column BETWEEN ? AND ?', (start_date, end_date))
+            cursor.execute(
+                'SELECT * FROM your_report_table WHERE date_column BETWEEN ? AND ?', (start_date, end_date))
         else:
-            cursor.execute('SELECT * FROM your_report_table WHERE server_name = ? AND date_column BETWEEN ? AND ?', (selected_server, start_date, end_date))
+            cursor.execute('SELECT * FROM your_report_table WHERE server_name = ? AND date_column BETWEEN ? AND ?',
+                           (selected_server, start_date, end_date))
 
         reports = cursor.fetchall()
 
         if not reports:
             report_output.delete(1.0, tk.END)
-            report_output.insert(tk.END, "No reports found for the selected criteria.")
+            report_output.insert(
+                tk.END, "No reports found for the selected criteria.")
         else:
             # Create a DataFrame and save to Excel
-            df = pd.DataFrame(reports, columns=['ID', 'Server Name', 'Total INbound', 'Total Outbound', 'Total PRI', 'Date'])
-            excel_file = f'report_{selected_server.replace(" ", "_")}_{start_date}.xlsx'  # Generate a filename
+            df = pd.DataFrame(reports, columns=[
+                              'ID', 'Server Name', 'Total INbound', 'Total Outbound', 'Total PRI', 'Date', 'Date&TIME'])
+            excel_file = f'report_{selected_server.replace(" ", "_")}_{
+                start_date}.xlsx'  # Generate a filename
             df.to_excel(excel_file, index=False)
             messagebox.showinfo("Success", f"Report saved as {excel_file}")
 
@@ -234,11 +303,13 @@ def show_report_window():
 
         conn.close()
 
-    report_button = tk.Button(report_window, text="Generate Report", command=generate_report)
+    report_button = tk.Button(
+        report_window, text="Generate Report", command=generate_report)
     report_button.pack(pady=10)
 
     report_output = tk.Text(report_window, height=10, width=50)
     report_output.pack(padx=10, pady=10)
+
 
 # Initialize the main window
 root = tk.Tk()
@@ -279,20 +350,24 @@ add_button.pack(side=tk.LEFT, padx=5)
 clear_button = tk.Button(button_frame, text="Clear Data", command=clear_data)
 clear_button.pack(side=tk.LEFT, padx=5)
 
-fetch_servers_button = tk.Button(button_frame, text="Fetch Servers", command=fetch_servers)
+fetch_servers_button = tk.Button(
+    button_frame, text="Fetch Servers", command=fetch_servers)
 fetch_servers_button.pack(side=tk.LEFT, padx=5)
 
 # Dashboard buttons frame
 dashboard_frame = tk.Frame(root)
 dashboard_frame.pack(pady=10)
 
-monitor_button = tk.Button(dashboard_frame, text="Monitor", command=lambda: monitor_servers(live=False))
+monitor_button = tk.Button(
+    dashboard_frame, text="Monitor", command=lambda: monitor_servers(live=False))
 monitor_button.pack(side=tk.LEFT, padx=5)
 
-live_monitor_button = tk.Button(dashboard_frame, text="Live Monitor", command=lambda: monitor_servers(live=True))
+live_monitor_button = tk.Button(
+    dashboard_frame, text="Live Monitor", command=lambda: monitor_servers(live=True))
 live_monitor_button.pack(side=tk.LEFT, padx=5)
 
-report_button = tk.Button(dashboard_frame, text="Show Report", command=show_report_window)
+report_button = tk.Button(
+    dashboard_frame, text="Show Report", command=show_report_window)
 report_button.pack(side=tk.LEFT, padx=5)
 
 # Text widget to display monitoring results
